@@ -1,58 +1,77 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>Face Detection</title>
-  <script defer src="https://cdn.jsdelivr.net/npm/face-api.js"></script>
-  <style>
-    body { margin: 0; overflow: hidden; text-align: center; }
-    canvas, video { position: absolute; top: 0; left: 0; }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Face Detection with MediaPipe</title>
+    <style>
+        canvas, video {
+            display: block;
+            margin: 20px auto;
+        }
+    </style>
 </head>
 <body>
-  <video id="video" width="640" height="480" autoplay muted></video>
-  <canvas id="overlay"></canvas>
+    <h1>Face Detection using MediaPipe</h1>
+    <video id="video" width="640" height="480" autoplay></video>
+    <canvas id="canvas" width="640" height="480"></canvas>
 
-  <script>
-    const video = document.getElementById('video');
-    const canvas = document.getElementById('overlay');
-    const ctx = canvas.getContext('2d');
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_detection@0.3"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@2.8.5"></script>
 
-    // Load models
-    Promise.all([
-      faceapi.nets.tinyFaceDetector.loadFromUri('https://cdn.jsdelivr.net/npm/face-api.js/weights')
-    ]).then(startVideo);
+    <script>
+        const videoElement = document.getElementById("video");
+        const canvasElement = document.getElementById("canvas");
+        const canvasCtx = canvasElement.getContext("2d");
 
-    function startVideo() {
-      navigator.mediaDevices.getUserMedia({ video: {} })
-        .then(stream => {
-          video.srcObject = stream;
-        })
-        .catch(err => console.error("Webcam error:", err));
-    }
+        // Setup MediaPipe face detector
+        const faceDetector = new faceDetection.FaceDetection({
+            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_detection@0.3/${file}`,
+        });
 
-    video.addEventListener('play', () => {
-      canvas.width = video.width;
-      canvas.height = video.height;
+        faceDetector.setOptions({
+            model: 'short',
+            minDetectionConfidence: 0.5,
+            minTrackingConfidence: 0.5,
+        });
 
-      const detect = async () => {
-        const detection = await faceapi.detectSingleFace(video, new faceapi.TinyFaceDetectorOptions());
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-        if (detection) {
-          const { x, y, width, height } = detection.box;
-          ctx.strokeStyle = '#00FF00';
-          ctx.lineWidth = 2;
-          ctx.strokeRect(x, y, width, height);
-
-          // Notify Storyline
-          window.parent.postMessage('faceDetected', '*');
+        // Create video stream from webcam
+        async function setupCamera() {
+            const stream = await navigator.mediaDevices.getUserMedia({
+                video: true,
+            });
+            videoElement.srcObject = stream;
         }
 
-        requestAnimationFrame(detect);
-      };
+        // Detect faces and draw bounding boxes
+        function detectFaces() {
+            faceDetector.send({ image: videoElement });
+        }
 
-      detect();
-    });
-  </script>
+        // On face detection
+        faceDetector.onResults((results) => {
+            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+            canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+
+            if (results.detections.length > 0) {
+                results.detections.forEach((detection) => {
+                    const { x, y, width, height } = detection.boundingBox;
+                    canvasCtx.beginPath();
+                    canvasCtx.rect(x, y, width, height);
+                    canvasCtx.lineWidth = 4;
+                    canvasCtx.strokeStyle = 'green';
+                    canvasCtx.stroke();
+                });
+            }
+        });
+
+        // Start the webcam and face detection
+        setupCamera().then(() => {
+            videoElement.onloadeddata = () => {
+                detectFaces();
+                setInterval(detectFaces, 100); // Detect faces every 100ms
+            };
+        });
+    </script>
 </body>
 </html>
